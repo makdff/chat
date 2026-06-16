@@ -5,10 +5,12 @@
             "name": "Streamlit: Run App",
             "type": "python",
             "request": "launch",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
             "module": "streamlit",
+            "cwd": "${workspaceFolder}",
             "args": [
                 "run",
-                "${file}",
+                "${workspaceFolder}\\app.py",
                 "--server.port",
                 "8501"
             ],
