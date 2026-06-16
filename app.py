@@ -19,9 +19,6 @@ from db import (
 # Import LLM provider registry
 from llm_providers import get_provider, PROVIDERS
 
-# Initialize database
-init_db()
-
 # Load environment variables (from .env file if it exists)
 load_dotenv()
 
@@ -32,6 +29,14 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Initialize database
+try:
+    init_db()
+except Exception as e:
+    st.error("Database connection failed. Check your Supabase database URL in Streamlit Cloud secrets.")
+    st.exception(e)
+    st.stop()
 
 # Define Custom Premium Styling
 def apply_custom_style():

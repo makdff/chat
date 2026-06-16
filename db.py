@@ -2,6 +2,7 @@ import sqlite3
 import os
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chats.db")
 
@@ -24,6 +25,17 @@ def get_database_url() -> Optional[str]:
 def using_postgres() -> bool:
     return bool(get_database_url())
 
+def normalize_database_url(database_url: str) -> str:
+    """Add Postgres options that Supabase cloud connections normally need."""
+    parsed = urlparse(database_url)
+    if parsed.scheme not in ("postgres", "postgresql"):
+        return database_url
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.setdefault("sslmode", "require")
+
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
 def get_sqlite_connection():
     conn = sqlite3.connect(DB_PATH)
     # Enable foreign keys support in SQLite
@@ -38,7 +50,7 @@ def get_postgres_connection():
     except ImportError:
         raise ImportError("Please install psycopg to use Supabase/Postgres: `pip install psycopg[binary]`")
 
-    return psycopg.connect(get_database_url(), row_factory=dict_row)
+    return psycopg.connect(normalize_database_url(get_database_url()), row_factory=dict_row, connect_timeout=10)
 
 @contextmanager
 def get_connection():
