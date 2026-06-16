@@ -12,7 +12,7 @@ from db import (
     delete_chat,
     get_chat_messages,
     add_message,
-    get_setting,
+    get_settings,
     set_setting
 )
 
@@ -31,12 +31,27 @@ st.set_page_config(
 )
 
 # Initialize database
-try:
+@st.cache_resource
+def initialize_database():
     init_db()
+
+try:
+    initialize_database()
 except Exception as e:
     st.error("Database connection failed. Check your Supabase database URL in Streamlit Cloud secrets.")
     st.exception(e)
     st.stop()
+
+@st.cache_data(ttl=300)
+def cached_settings():
+    return get_settings()
+
+def cached_get_setting(key: str, default=None):
+    return cached_settings().get(key, default)
+
+def save_setting(key: str, value: str):
+    set_setting(key, value)
+    cached_settings.clear()
 
 # Define Custom Premium Styling
 def apply_custom_style():
@@ -136,7 +151,7 @@ if "error_message" not in st.session_state:
 # Helper to save API key in database settings and environment variables
 def save_api_key(provider_name: str, key_val: str):
     db_key = f"api_key_{provider_name}"
-    set_setting(db_key, key_val)
+    save_setting(db_key, key_val)
     # Also set env var for current session
     os.environ[db_key.upper()] = key_val
 
@@ -147,7 +162,7 @@ def load_api_key(provider_name: str) -> str:
     if os.getenv(env_name):
         return os.getenv(env_name)
     # 2. Check settings db
-    return get_setting(f"api_key_{provider_name}", "")
+    return cached_get_setting(f"api_key_{provider_name}", "")
 
 # --- SIDEBAR IMPLEMENTATION ---
 st.sidebar.markdown(
@@ -229,7 +244,7 @@ provider_options = {
 }
 
 # Select Provider
-saved_provider = get_setting("selected_provider", "gemini")
+saved_provider = cached_get_setting("selected_provider", "gemini")
 selected_provider_key = st.sidebar.selectbox(
     "AI Provider",
     options=list(provider_options.keys()),
@@ -237,14 +252,14 @@ selected_provider_key = st.sidebar.selectbox(
     index=list(provider_options.keys()).index(saved_provider) if saved_provider in provider_options else 0
 )
 if selected_provider_key != saved_provider:
-    set_setting("selected_provider", selected_provider_key)
+    save_setting("selected_provider", selected_provider_key)
 
 # Dynamic list of models depending on provider selection
 if selected_provider_key == "custom":
     # Custom provider configurations
-    custom_name = get_setting("custom_provider_name", "Custom Provider")
-    custom_base_url = get_setting("custom_provider_base_url", "https://api.openai.com/v1")
-    custom_models_str = get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo")
+    custom_name = cached_get_setting("custom_provider_name", "Custom Provider")
+    custom_base_url = cached_get_setting("custom_provider_base_url", "https://api.openai.com/v1")
+    custom_models_str = cached_get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo")
     
     custom_config = {
         "name": custom_name,
@@ -259,7 +274,7 @@ else:
     model_options = provider_inst.list_default_models()
 
 # Load saved model or default to the first model in the list
-saved_model = get_setting("selected_model", model_options[0] if model_options else "")
+saved_model = cached_get_setting("selected_model", model_options[0] if model_options else "")
 if saved_model in model_options:
     model_index = model_options.index(saved_model)
 else:
@@ -271,7 +286,7 @@ selected_model = st.sidebar.selectbox(
     index=model_index
 )
 if selected_model != saved_model:
-    set_setting("selected_model", selected_model)
+    save_setting("selected_model", selected_model)
 
 # Expanders for API Keys and Custom Settings
 with st.sidebar.expander("🔑 API Keys", expanded=False):
@@ -316,17 +331,17 @@ with st.sidebar.expander("🔑 API Keys", expanded=False):
         save_api_key("huggingface", hf_key)
 
 with st.sidebar.expander("⚙️ Custom Provider Settings", expanded=False):
-    c_name = st.text_input("Provider Name", value=get_setting("custom_provider_name", "Custom Provider"))
-    if c_name != get_setting("custom_provider_name", "Custom Provider"):
-        set_setting("custom_provider_name", c_name)
+    c_name = st.text_input("Provider Name", value=cached_get_setting("custom_provider_name", "Custom Provider"))
+    if c_name != cached_get_setting("custom_provider_name", "Custom Provider"):
+        save_setting("custom_provider_name", c_name)
         
-    c_url = st.text_input("Base URL", value=get_setting("custom_provider_base_url", "https://api.openai.com/v1"))
-    if c_url != get_setting("custom_provider_base_url", "https://api.openai.com/v1"):
-        set_setting("custom_provider_base_url", c_url)
+    c_url = st.text_input("Base URL", value=cached_get_setting("custom_provider_base_url", "https://api.openai.com/v1"))
+    if c_url != cached_get_setting("custom_provider_base_url", "https://api.openai.com/v1"):
+        save_setting("custom_provider_base_url", c_url)
         
-    c_models = st.text_input("Model List (comma separated)", value=get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo"))
-    if c_models != get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo"):
-        set_setting("custom_provider_models", c_models)
+    c_models = st.text_input("Model List (comma separated)", value=cached_get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo"))
+    if c_models != cached_get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo"):
+        save_setting("custom_provider_models", c_models)
         
     c_key = st.text_input(
         "Custom API Key",
@@ -441,9 +456,9 @@ else:
         # Retrieve active provider instance
         if selected_provider_key == "custom":
             provider_cfg = {
-                "name": get_setting("custom_provider_name", "Custom Provider"),
-                "base_url": get_setting("custom_provider_base_url", "https://api.openai.com/v1"),
-                "models": get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo")
+                "name": cached_get_setting("custom_provider_name", "Custom Provider"),
+                "base_url": cached_get_setting("custom_provider_base_url", "https://api.openai.com/v1"),
+                "models": cached_get_setting("custom_provider_models", "gpt-4o, gpt-3.5-turbo")
             }
             active_provider = get_provider(selected_provider_key, provider_cfg)
         else:
